@@ -15,52 +15,61 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 16
-      - run: npm install
-      - run: npm run build
-      - uses: actions/upload-artifact@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: webpack artifacts
+          name: app
           path: public/
 
-  Build-Docker-Image:
+  build-docker:
     runs-on: ubuntu-latest
     needs: build
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
         with:
-          name: webpack artifacts
+          name: app
           path: public
-      - uses: docker/login-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
-      - uses: docker/build-push-action@v5
+
+      - name: Build & Push Docker image
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
 
-  Deploy-to-Azure:
+  deploy:
     runs-on: ubuntu-latest
-    needs: Build-Docker-Image
+    needs: build-docker
     steps:
-      - uses: azure/login@v2
+      - name: Azure login
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - uses: azure/webapps-deploy@v3
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           images: ghcr.io/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
-
-      - uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            az logout
-            az cache purge
-            az account clear
